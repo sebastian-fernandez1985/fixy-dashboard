@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fixy Logística — Dashboard Estratégico</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+  <style>
+    :root {
+      --fixy-blue: #1FA9E0;
+      --fixy-yellow: #FCC533;
+      --fixy-dark: #0E5A78;
+      --fixy-bg: #F4F7FA;
+    }
+    body { background: var(--fixy-bg); font-family: 'Inter', system-ui, sans-serif; }
+    .card { background: white; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03); }
+    .kpi-card { transition: transform 0.15s, box-shadow 0.15s; }
+    .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.08); }
+    .tab-active { background: var(--fixy-blue) !important; color: white !important; }
+    .pulse-dot { animation: pulse 2s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .drop-zone { transition: all 0.2s; }
+    .drop-zone.drag-over { background: rgba(31, 169, 224, 0.1); border-color: var(--fixy-blue); }
+    .alert-alta { background: #FEE2E2; border-left: 4px solid #DC2626; color: #7F1D1D; }
+    .alert-media { background: #FEF3C7; border-left: 4px solid #D97706; color: #78350F; }
+    .alert-baja { background: #DBEAFE; border-left: 4px solid #2563EB; color: #1E3A8A; }
+    canvas { max-height: 380px; }
+  </style>
+</head>
+<body class="text-slate-800">
+
+<!-- HEADER -->
+<header class="bg-gradient-to-r from-[#0E5A78] to-[#1FA9E0] text-white shadow-lg">
+  <div class="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <div class="w-12 h-12 bg-yellow-400 rounded-lg flex items-center justify-center font-black text-2xl text-[#0E5A78]">F</div>
+      <div>
+        <h1 class="text-2xl font-bold">Fixy Logística</h1>
+        <p class="text-blue-100 text-sm">Dashboard Estratégico C-Level · Toma de decisiones basada en datos</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <div id="status-indicator" class="flex items-center gap-2 bg-white/10 rounded-full px-3 py-1.5">
+        <span class="w-2 h-2 bg-yellow-300 rounded-full pulse-dot"></span>
+        <span id="status-text">Cargando...</span>
+      </div>
+      <button onclick="document.getElementById('upload-modal').classList.remove('hidden')" class="bg-white text-[#0E5A78] hover:bg-yellow-300 px-4 py-2 rounded-lg font-semibold text-sm transition">
+        📁 Cargar Archivos
+      </button>
+      <button onclick="refreshAll()" class="bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg text-sm transition">🔄</button>
+    </div>
+  </div>
+
+  <!-- TABS -->
+  <nav class="max-w-[1600px] mx-auto px-6 flex gap-1">
+    <button onclick="switchTab('resumen')" data-tab="resumen" class="tab-btn tab-active px-5 py-2.5 rounded-t-lg text-sm font-semibold transition">📊 Resumen Ejecutivo</button>
+    <button onclick="switchTab('servicios')" data-tab="servicios" class="tab-btn px-5 py-2.5 rounded-t-lg text-sm font-semibold transition text-blue-100 hover:bg-white/10">🚚 Servicios</button>
+    <button onclick="switchTab('clientes')" data-tab="clientes" class="tab-btn px-5 py-2.5 rounded-t-lg text-sm font-semibold transition text-blue-100 hover:bg-white/10">🏢 Clientes</button>
+    <button onclick="switchTab('pagos')" data-tab="pagos" class="tab-btn px-5 py-2.5 rounded-t-lg text-sm font-semibold transition text-blue-100 hover:bg-white/10">💳 Pagos</button>
+    <button onclick="switchTab('fulfillment')" data-tab="fulfillment" class="tab-btn px-5 py-2.5 rounded-t-lg text-sm font-semibold transition text-blue-100 hover:bg-white/10">📦 FixyFull</button>
+    <button onclick="switchTab('simulador')" data-tab="simulador" class="tab-btn px-5 py-2.5 rounded-t-lg text-sm font-semibold transition text-blue-100 hover:bg-white/10">🎯 Simulador</button>
+    <button onclick="switchTab('glosario')" data-tab="glosario" class="tab-btn px-5 py-2.5 rounded-t-lg text-sm font-semibold transition text-blue-100 hover:bg-white/10">📖 Glosario</button>
+  </nav>
+</header>
+
+<main class="max-w-[1600px] mx-auto px-6 py-6">
+
+  <!-- =========== TAB RESUMEN EJECUTIVO =========== -->
+  <section id="tab-resumen" class="tab-content">
+    <!-- KPI Row -->
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Envíos YTD</p>
+        <p class="text-3xl font-bold text-[#0E5A78] mt-1" id="kpi-envios">—</p>
+        <p class="text-xs mt-1"><span id="kpi-envios-yoy" class="font-semibold">—</span> <span class="text-slate-500">vs YoY</span></p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Facturación YTD</p>
+        <p class="text-3xl font-bold text-[#0E5A78] mt-1" id="kpi-fact">—</p>
+        <p class="text-xs mt-1"><span id="kpi-fact-yoy-real" class="font-semibold">—</span> <span class="text-slate-500">real (s/IPC)</span></p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Cumplimiento Obj +70%</p>
+        <p class="text-3xl font-bold mt-1" id="kpi-cumpl">—</p>
+        <p class="text-xs mt-1"><span class="text-slate-500">Objetivo YTD: </span><span id="kpi-obj">—</span></p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Precio Promedio</p>
+        <p class="text-3xl font-bold text-[#0E5A78] mt-1" id="kpi-pp">—</p>
+        <p class="text-xs mt-1"><span id="kpi-pp-var" class="font-semibold">—</span> <span class="text-slate-500">vs YoY</span></p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Clientes Activos</p>
+        <p class="text-3xl font-bold text-[#0E5A78] mt-1" id="kpi-clientes">—</p>
+        <p class="text-xs text-slate-500 mt-1">Último mes</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide font-semibold">Ingreso Fixy Real</p>
+        <p class="text-3xl font-bold text-[#0E5A78] mt-1" id="kpi-ingreso">—</p>
+        <p class="text-xs text-slate-500 mt-1">Importe + 1% CR</p>
+      </div>
+    </div>
+
+    <!-- Alertas -->
+    <div class="card p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-lg text-[#0E5A78]">🚨 Alertas Estratégicas</h3>
+        <span class="text-xs text-slate-500" id="alertas-count">0 alertas</span>
+      </div>
+      <div id="alertas-container" class="space-y-2"></div>
+    </div>
+
+    <!-- Evolutivo principal -->
+    <div class="card p-5 mb-6">
+      <h3 class="font-bold text-lg text-[#0E5A78] mb-1">📈 Evolutivo de Envíos: 2024 — 2025 — 2026 vs Objetivo</h3>
+      <p class="text-xs text-slate-500 mb-3">Línea de tiempo con datos reales, objetivo +70% y proyección</p>
+      <canvas id="chart-evolutivo"></canvas>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">💰 Facturación Mensual (Nominal)</h3>
+        <canvas id="chart-facturacion"></canvas>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">🎯 Real vs Objetivo +70%</h3>
+        <canvas id="chart-real-obj"></canvas>
+      </div>
+    </div>
+
+    <!-- Lectura ejecutiva -->
+    <div class="card p-6 bg-gradient-to-br from-[#0E5A78] to-[#1FA9E0] text-white">
+      <h3 class="font-bold text-xl mb-3">🧠 Lectura Ejecutiva (auto-generada)</h3>
+      <div id="lectura-ejecutiva" class="space-y-2 text-sm leading-relaxed"></div>
+    </div>
+  </section>
+
+  <!-- =========== TAB SERVICIOS =========== -->
+  <section id="tab-servicios" class="tab-content hidden">
+    <div class="card p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-lg text-[#0E5A78]">🚚 Análisis por Tipo de Servicio</h3>
+        <select id="servicio-mes-filter" class="border rounded-lg px-3 py-1.5 text-sm" onchange="loadServicios()">
+          <option value="ALL">Todos los meses</option>
+        </select>
+      </div>
+      <canvas id="chart-servicios-evol" style="max-height: 400px"></canvas>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">Distribución del Ingreso Fixy</h3>
+        <canvas id="chart-servicios-pie"></canvas>
+      </div>
+      <div class="card p-5 overflow-auto">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">Ranking Detallado</h3>
+        <table class="w-full text-sm">
+          <thead class="bg-slate-100">
+            <tr>
+              <th class="text-left p-2">Servicio</th>
+              <th class="text-right p-2">Envíos</th>
+              <th class="text-right p-2">Importe</th>
+              <th class="text-right p-2">Ingreso Fixy</th>
+            </tr>
+          </thead>
+          <tbody id="servicios-tabla"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========== TAB CLIENTES =========== -->
+  <section id="tab-clientes" class="tab-content hidden">
+    <div class="card p-5 mb-6">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-bold text-lg text-[#0E5A78]">🏢 Top Clientes — Comportamiento y Tendencia</h3>
+        <div class="flex gap-2">
+          <select id="top-n" class="border rounded-lg px-3 py-1.5 text-sm" onchange="loadClientes()">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="20">Top 20</option>
+          </select>
+          <select id="top-metric" class="border rounded-lg px-3 py-1.5 text-sm" onchange="loadClientes()">
+            <option value="ingreso_fixy">Por Ingreso Fixy</option>
+            <option value="q_envios">Por Q Envíos</option>
+            <option value="importe">Por Importe</option>
+          </select>
+        </div>
+      </div>
+      <canvas id="chart-top-clientes" style="max-height: 420px"></canvas>
+    </div>
+
+    <div class="card p-5 mb-6 overflow-auto">
+      <h3 class="font-bold text-lg text-[#0E5A78] mb-3">Análisis de Tendencia por Cliente</h3>
+      <table class="w-full text-sm">
+        <thead class="bg-slate-100">
+          <tr>
+            <th class="text-left p-2">Cliente</th>
+            <th class="text-right p-2">Total Envíos</th>
+            <th class="text-right p-2">Ingreso Fixy</th>
+            <th class="text-right p-2">Crecimiento</th>
+            <th class="text-right p-2">Último mes</th>
+            <th class="text-left p-2">Estado</th>
+          </tr>
+        </thead>
+        <tbody id="clientes-tabla"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- =========== TAB PAGOS =========== -->
+  <section id="tab-pagos" class="tab-content hidden">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Contraentrega</p>
+        <p class="text-3xl font-bold text-[#1FA9E0]" id="pago-contra">—</p>
+        <p class="text-xs text-slate-500" id="pago-contra-pct">—%</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Pago Anticipado</p>
+        <p class="text-3xl font-bold text-[#FCC533]" id="pago-ant">—</p>
+        <p class="text-xs text-slate-500" id="pago-ant-pct">—%</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">CR Total Gestionado</p>
+        <p class="text-3xl font-bold text-[#0E5A78]" id="pago-cr-total">—</p>
+        <p class="text-xs text-slate-500">Volumen contrareembolso</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Ingreso x 1% CR</p>
+        <p class="text-3xl font-bold text-[#0E5A78]" id="pago-cr-ingreso">—</p>
+        <p class="text-xs text-slate-500">Comisión Fixy</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">% de Mix por Mes</h3>
+        <canvas id="chart-pago-pct"></canvas>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">Volumen Absoluto</h3>
+        <canvas id="chart-pago-abs"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- =========== TAB FULFILLMENT =========== -->
+  <section id="tab-fulfillment" class="tab-content hidden">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Pedidos YTD</p>
+        <p class="text-3xl font-bold text-[#1FA9E0]" id="ful-pedidos">—</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Unidades Procesadas</p>
+        <p class="text-3xl font-bold text-[#FCC533]" id="ful-unidades">—</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Facturación FixyFull</p>
+        <p class="text-3xl font-bold text-[#0E5A78]" id="ful-fact">—</p>
+      </div>
+      <div class="card kpi-card p-4">
+        <p class="text-xs text-slate-500 uppercase tracking-wide">Clientes Únicos</p>
+        <p class="text-3xl font-bold text-[#0E5A78]" id="ful-clientes">—</p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">📦 Evolución de Pedidos (Notas)</h3>
+        <canvas id="chart-ful-pedidos"></canvas>
+      </div>
+      <div class="card p-5">
+        <h3 class="font-bold text-lg text-[#0E5A78] mb-3">💰 Facturación FixyFull</h3>
+        <canvas id="chart-ful-fact"></canvas>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <h3 class="font-bold text-lg text-[#0E5A78] mb-3">Top Clientes Fulfillment</h3>
+      <canvas id="chart-ful-top" style="max-height: 320px"></canvas>
+    </div>
+  </section>
+
+  <!-- =========== TAB SIMULADOR =========== -->
+  <section id="tab-simulador" class="tab-content hidden">
+    <div class="card p-6 mb-6">
+      <h3 class="font-bold text-xl text-[#0E5A78] mb-2">🎯 Simulador de Escenarios</h3>
+      <p class="text-sm text-slate-500 mb-6">Ajustá variables clave y mirá cómo cambia la proyección anual.</p>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <label class="text-sm font-semibold">🎯 Objetivo de Crecimiento (%)</label>
+          <input type="range" id="sim-growth" min="0" max="200" value="70" class="w-full mt-2" oninput="document.getElementById('sim-growth-val').textContent = this.value + '%'" />
+          <p class="text-3xl font-bold text-[#1FA9E0] mt-2" id="sim-growth-val">70%</p>
+        </div>
+        <div>
+          <label class="text-sm font-semibold">📈 IPC Anual Estimado (%)</label>
+          <input type="range" id="sim-ipc" min="0" max="100" value="25" class="w-full mt-2" oninput="document.getElementById('sim-ipc-val').textContent = this.value + '%'" />
+          <p class="text-3xl font-bold text-[#FCC533] mt-2" id="sim-ipc-val">25%</p>
+        </div>
+        <div>
+          <label class="text-sm font-semibold">📊 Tasa Real Esperada (%)</label>
+          <input type="range" id="sim-tasa" min="0" max="200" value="55" class="w-full mt-2" oninput="document.getElementById('sim-tasa-val').textContent = this.value + '%'" />
+          <p class="text-3xl font-bold text-[#0E5A78] mt-2" id="sim-tasa-val">55%</p>
+        </div>
+      </div>
+      <button onclick="runSimulador()" class="mt-6 bg-[#1FA9E0] hover:bg-[#0E5A78] text-white px-6 py-2.5 rounded-lg font-semibold transition">
+        Calcular Escenario
+      </button>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div class="card p-5">
+        <p class="text-xs text-slate-500 uppercase">Objetivo Anual</p>
+        <p class="text-2xl font-bold text-[#0E5A78]" id="sim-obj">—</p>
+      </div>
+      <div class="card p-5">
+        <p class="text-xs text-slate-500 uppercase">Proyección Anual</p>
+        <p class="text-2xl font-bold text-[#0E5A78]" id="sim-proy">—</p>
+      </div>
+      <div class="card p-5">
+        <p class="text-xs text-slate-500 uppercase">Gap</p>
+        <p class="text-2xl font-bold" id="sim-gap">—</p>
+      </div>
+    </div>
+
+    <div class="card p-5">
+      <h3 class="font-bold text-lg text-[#0E5A78] mb-3">Resultado del Escenario</h3>
+      <div id="sim-resultado" class="text-sm space-y-2 text-slate-700"></div>
+    </div>
+  </section>
+
+  <!-- =========== TAB GLOSARIO =========== -->
+  <section id="tab-glosario" class="tab-content hidden">
+    <div class="card p-6 max-w-4xl mx-auto">
+      <h3 class="font-bold text-2xl text-[#0E5A78] mb-4">📖 Glosario Ejecutivo</h3>
+      <p class="text-sm text-slate-500 mb-6">Términos financieros y de negocio que aparecen en este dashboard, explicados sin jerga.</p>
+      <dl class="space-y-4">
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">YTD (Year to Date)</dt>
+          <dd class="text-sm text-slate-600">Lo acumulado desde el 1° de enero del año en curso hasta hoy. Es la métrica para responder "¿cómo vamos en lo que va del año?"</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">YoY (Year over Year)</dt>
+          <dd class="text-sm text-slate-600">Comparación contra el mismo período del año anterior. Ej: enero 2026 vs enero 2025. Sirve para saber si crecemos o decrecemos respecto al mismo momento del año pasado.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">IPC (Índice de Precios al Consumidor)</dt>
+          <dd class="text-sm text-slate-600">Medida oficial de la inflación. Si la facturación crece 50% pero la inflación fue 30%, el crecimiento real es ~15% (no 50%). Es lo que llamamos "deflactar" para ver crecimiento genuino.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">Crecimiento Real vs Nominal</dt>
+          <dd class="text-sm text-slate-600">Nominal = el número tal cual (no descuenta inflación). Real = descontando IPC. En Argentina, mirar solo lo nominal es engañoso: podés "crecer" 80% en facturación y haber perdido poder de compra.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">PP (Precio Promedio)</dt>
+          <dd class="text-sm text-slate-600">Facturación dividida por cantidad de envíos. Indica cuánto, en promedio, paga un cliente por envío. Si crece más que IPC, estás recuperando margen; si crece menos, estás perdiendo.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">Ingreso Fixy (vs Importe)</dt>
+          <dd class="text-sm text-slate-600">Importe = lo que paga el cliente por el flete (lo que Fixy percibe del envío). Ingreso Fixy = Importe + 1% del contrareembolso (la comisión Fixy por gestionar el cobro al destinatario).</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">Contraentrega vs Pago Anticipado</dt>
+          <dd class="text-sm text-slate-600">Contraentrega: el destinatario paga al recibir (Fixy cobra al destinatario y rinde al cliente; cobra 1% por gestión). Pago Anticipado: el cliente ya pagó, Fixy solo entrega (no hay 1% extra). La proporción entre ambos afecta directamente el ingreso real.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">Churn (Tasa de Abandono)</dt>
+          <dd class="text-sm text-slate-600">Clientes que dejaron de operar. Si un cliente top tenía 1000 envíos/mes y este mes tiene 0, hay churn. Es crítico detectarlo a tiempo (un cliente top que se va vale más que dos chicos nuevos).</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">GAP</dt>
+          <dd class="text-sm text-slate-600">Diferencia entre lo que se logró y lo que se esperaba lograr. Si el objetivo era 100K envíos y se hicieron 85K, el GAP es -15K.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">Concentración de Cartera</dt>
+          <dd class="text-sm text-slate-600">% de los ingresos que dependen de los pocos clientes más grandes. Si el top 3 representa 70%, el negocio es frágil: si uno se va, se cae mucha facturación.</dd>
+        </div>
+        <div class="border-l-4 border-[#1FA9E0] pl-4">
+          <dt class="font-bold text-[#0E5A78]">Proyección Anual</dt>
+          <dd class="text-sm text-slate-600">Estimación de dónde vamos a terminar el año si se mantiene la tendencia actual. Permite anticipar y corregir antes de que sea tarde.</dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<!-- ============ MODAL DE CARGA ============ -->
+<div id="upload-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+  <div class="bg-white rounded-xl max-w-2xl w-full p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-xl font-bold text-[#0E5A78]">📁 Cargar Archivos Excel</h3>
+      <button onclick="document.getElementById('upload-modal').classList.add('hidden')" class="text-slate-400 hover:text-slate-700 text-2xl">×</button>
+    </div>
+    <p class="text-sm text-slate-500 mb-4">
+      Subí los Excel con estos nombres (o similares — el sistema los detecta automáticamente):
+    </p>
+    <ul class="text-xs text-slate-600 mb-4 space-y-1">
+      <li>📄 <code>Tablero_Fixy_*.xlsx</code> — consolidado mensual histórico</li>
+      <li>📄 <code>FACTURACION_*.xlsx</code> — envíos detalle + facturación</li>
+      <li>📄 <code>Fulfillment_*.xlsx</code> — operación FixyFull</li>
+    </ul>
+    <div id="drop-zone" class="drop-zone border-2 border-dashed border-slate-300 rounded-lg p-8 text-center cursor-pointer" onclick="document.getElementById('file-input').click()">
+      <p class="text-slate-400 text-4xl mb-2">📤</p>
+      <p class="font-semibold">Arrastrá los archivos aquí o hacé click</p>
+      <p class="text-xs text-slate-500 mt-1">Excel (.xlsx) — hasta 200MB</p>
+      <input type="file" id="file-input" multiple accept=".xlsx,.xlsm" class="hidden" onchange="uploadFiles(this.files)" />
+    </div>
+    <div id="upload-status" class="mt-4 text-sm"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  FRONTEND LOGIC
+// ============================================================
+
+const fmtNum = (n) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(n);
+const fmtMoney = (n) => '$' + new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(n);
+const fmtMoneyShort = (n) => {
+  if (n >= 1e9) return '$' + (n/1e9).toFixed(2) + 'B';
+  if (n >= 1e6) return '$' + (n/1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return '$' + (n/1e3).toFixed(0) + 'K';
+  return '$' + n.toFixed(0);
+};
+const fmtPct = (n, decimals=1) => (n * 100).toFixed(decimals) + '%';
+const colorize = (n, inverse=false) => {
+  if (inverse) n = -n;
+  if (n > 0) return 'text-green-600';
+  if (n < 0) return 'text-red-600';
+  return 'text-slate-500';
+};
+
+const COLORS = {
+  blue: '#1FA9E0',
+  yellow: '#FCC533',
+  dark: '#0E5A78',
+  green: '#16A34A',
+  red: '#DC2626',
+  grey: '#6B7280',
+  palette: ['#1FA9E0', '#FCC533', '#0E5A78', '#16A34A', '#DC2626', '#A855F7', '#EC4899', '#F97316', '#10B981', '#6366F1'],
+};
+
+let charts = {};
+const MESES_CORTO = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+const MESES_LARGO = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+
+// ====== TABS ======
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.add('hidden'));
+  document.getElementById('tab-' + tab).classList.remove('hidden');
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.remove('tab-active');
+    b.classList.add('text-blue-100');
+  });
+  document.querySelector(`[data-tab="${tab}"]`).classList.add('tab-active');
+  document.querySelector(`[data-tab="${tab}"]`).classList.remove('text-blue-100');
+  // Cargar lazy
+  if (tab === 'servicios') loadServicios();
+  if (tab === 'clientes') loadClientes();
+  if (tab === 'pagos') loadPagos();
+  if (tab === 'fulfillment') loadFulfillment();
+}
+
+// ====== UPLOAD ======
+const dropZone = document.getElementById('drop-zone');
+['dragenter', 'dragover'].forEach(e => dropZone.addEventListener(e, ev => {
+  ev.preventDefault(); dropZone.classList.add('drag-over');
+}));
+['dragleave', 'drop'].forEach(e => dropZone.addEventListener(e, ev => {
+  ev.preventDefault(); dropZone.classList.remove('drag-over');
+}));
+dropZone.addEventListener('drop', e => uploadFiles(e.dataTransfer.files));
+
+async function uploadFiles(files) {
+  if (!files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append('files', f);
+  document.getElementById('upload-status').innerHTML = '⏳ Procesando...';
+  const r = await fetch('/api/upload', { method: 'POST', body: fd });
+  const data = await r.json();
+  if (data.ok) {
+    document.getElementById('upload-status').innerHTML = `<span class="text-green-600">✅ Cargados: ${data.saved.join(', ')}</span>`;
+    setTimeout(() => {
+      document.getElementById('upload-modal').classList.add('hidden');
+      refreshAll();
+    }, 1200);
+  } else {
+    document.getElementById('upload-status').innerHTML = `<span class="text-red-600">❌ Error</span>`;
+  }
+}
+
+// ====== STATUS ======
+async function loadStatus() {
+  const r = await fetch('/api/status');
+  const d = await r.json();
+  if (d.has_envios && d.has_tablero) {
+    document.getElementById('status-text').textContent = `${d.files_loaded.length} archivos · ${new Date(d.last_update).toLocaleString('es-AR')}`;
+    document.querySelector('#status-indicator span').classList.remove('bg-yellow-300');
+    document.querySelector('#status-indicator span').classList.add('bg-green-400');
+    return true;
+  } else {
+    document.getElementById('status-text').textContent = 'Sin archivos cargados';
+    return false;
+  }
+}
+
+// ====== REFRESH ALL ======
+async function refreshAll() {
+  const ready = await loadStatus();
+  if (!ready) {
+    document.getElementById('upload-modal').classList.remove('hidden');
+    return;
+  }
+  await loadKPIs();
+  await loadEvolutivo();
+  await loadAlertas();
+}
+
+// ====== KPIs ======
+async function loadKPIs() {
+  const r = await fetch('/api/kpis');
+  const d = await r.json();
+  if (d.error) return;
+  document.getElementById('kpi-envios').textContent = fmtNum(d.ytd_envios);
+  document.getElementById('kpi-envios-yoy').textContent = (d.yoy_envios >= 0 ? '+' : '') + fmtPct(d.yoy_envios);
+  document.getElementById('kpi-envios-yoy').className = 'font-semibold ' + colorize(d.yoy_envios);
+  document.getElementById('kpi-fact').textContent = fmtMoneyShort(d.ytd_facturacion);
+  document.getElementById('kpi-fact-yoy-real').textContent = (d.yoy_facturacion_real >= 0 ? '+' : '') + fmtPct(d.yoy_facturacion_real);
+  document.getElementById('kpi-fact-yoy-real').className = 'font-semibold ' + colorize(d.yoy_facturacion_real);
+  const cumpl = d.cumplimiento_objetivo;
+  const cumplEl = document.getElementById('kpi-cumpl');
+  cumplEl.textContent = fmtPct(cumpl);
+  cumplEl.className = 'text-3xl font-bold mt-1 ' + (cumpl >= 1 ? 'text-green-600' : cumpl >= 0.85 ? 'text-yellow-600' : 'text-red-600');
+  document.getElementById('kpi-obj').textContent = fmtNum(d.ytd_objetivo_envios);
+  document.getElementById('kpi-pp').textContent = fmtMoneyShort(d.precio_promedio_actual);
+  const varPP = (d.precio_promedio_actual / d.precio_promedio_ant - 1);
+  document.getElementById('kpi-pp-var').textContent = (varPP >= 0 ? '+' : '') + fmtPct(varPP);
+  document.getElementById('kpi-pp-var').className = 'font-semibold ' + colorize(varPP);
+  document.getElementById('kpi-clientes').textContent = d.clientes_activos_ultimo_mes;
+  document.getElementById('kpi-ingreso').textContent = '—';  // se llena desde servicios
+
+  // Lectura ejecutiva
+  generarLecturaEjecutiva(d);
+}
+
+function generarLecturaEjecutiva(d) {
+  const el = document.getElementById('lectura-ejecutiva');
+  const cumpl = d.cumplimiento_objetivo;
+  const yoyE = d.yoy_envios;
+  const yoyFR = d.yoy_facturacion_real;
+  const yoyFN = d.yoy_facturacion_nominal;
+
+  let html = '';
+  // Diagnóstico envíos
+  if (cumpl >= 1) {
+    html += `<p>✅ <b>Estamos en línea con el objetivo +70%</b>: YTD al ${fmtPct(cumpl, 0)} del target. Tendencia de envíos: <b>${(yoyE >= 0 ? '+' : '') + fmtPct(yoyE, 1)}</b> YoY.</p>`;
+  } else if (cumpl >= 0.85) {
+    html += `<p>🟡 <b>Cerca del objetivo</b> (${fmtPct(cumpl, 0)} cumplimiento). Crecemos <b>${fmtPct(yoyE, 1)}</b> YoY, pero por debajo del 70% pactado. Acción: revisar mes corriente, identificar clientes con caída.</p>`;
+  } else {
+    html += `<p>🔴 <b>Cumplimiento bajo</b>: ${fmtPct(cumpl, 0)} del objetivo. Faltan ${fmtNum(d.ytd_objetivo_envios - d.ytd_envios)} envíos para estar en línea. Crítico revisar pipeline comercial y churn.</p>`;
+  }
+  // Facturación
+  if (yoyFR > 0.2) {
+    html += `<p>💰 Facturación crece <b>${fmtPct(yoyFN, 1)}</b> nominal / <b>${fmtPct(yoyFR, 1)}</b> real (descontando IPC ~${fmtPct(d.ipc_aplicado, 0)}). Indica precio + volumen creciendo por arriba de inflación.</p>`;
+  } else if (yoyFR > 0) {
+    html += `<p>💰 Facturación nominal +${fmtPct(yoyFN, 1)} pero real solo +${fmtPct(yoyFR, 1)}. El precio promedio sigue al IPC; el crecimiento viene de volumen, no de precio.</p>`;
+  } else {
+    html += `<p>⚠️ Facturación cae en términos reales (${fmtPct(yoyFR, 1)}). Crecimiento nominal +${fmtPct(yoyFN, 1)} no alcanza para cubrir IPC. Urgente revisar tarifas.</p>`;
+  }
+  // PP
+  const varPP = (d.precio_promedio_actual / d.precio_promedio_ant - 1);
+  if (varPP > d.ipc_aplicado) {
+    html += `<p>📈 Precio promedio: <b>+${fmtPct(varPP, 1)}</b> (supera IPC). Margen unitario en expansión.</p>`;
+  } else {
+    html += `<p>📉 Precio promedio: +${fmtPct(varPP, 1)} (por debajo del IPC ${fmtPct(d.ipc_aplicado, 1)}). Se está cediendo margen unitario.</p>`;
+  }
+  el.innerHTML = html;
+}
+
+// ====== EVOLUTIVO ======
+async function loadEvolutivo() {
+  const r = await fetch('/api/evolutivo');
+  const d = await r.json();
+  if (d.error) return;
+
+  // Gráfico evolutivo envíos
+  if (charts.evolutivo) charts.evolutivo.destroy();
+  charts.evolutivo = new Chart(document.getElementById('chart-evolutivo'), {
+    type: 'line',
+    data: {
+      labels: MESES_CORTO,
+      datasets: [
+        { label: '2024', data: d['2024'], borderColor: COLORS.grey, backgroundColor: COLORS.grey, tension: 0.3, borderWidth: 2 },
+        { label: '2025', data: d['2025'], borderColor: COLORS.dark, backgroundColor: COLORS.dark, tension: 0.3, borderWidth: 2.5 },
+        { label: 'Objetivo 2026 (+70%)', data: d['2026_objetivo'], borderColor: COLORS.yellow, backgroundColor: COLORS.yellow, tension: 0.3, borderWidth: 2, borderDash: [5, 5] },
+        { label: '2026 Real', data: d['2026_real'], borderColor: COLORS.blue, backgroundColor: COLORS.blue, tension: 0.3, borderWidth: 3, pointRadius: 5 },
+        { label: 'Proyección 2026', data: d['2026_proyeccion'].map((v, i) => d['2026_real'][i] === null ? v : null), borderColor: COLORS.red, backgroundColor: COLORS.red, tension: 0.3, borderWidth: 2, borderDash: [3, 3] }
+      ]
+    },
+    options: chartOpts({ y: { title: 'Q de Envíos', fmt: v => (v/1000).toFixed(0) + 'K' } })
+  });
+
+  // Facturación
+  if (charts.fact) charts.fact.destroy();
+  charts.fact = new Chart(document.getElementById('chart-facturacion'), {
+    type: 'line',
+    data: {
+      labels: MESES_CORTO,
+      datasets: [
+        { label: '2025', data: d.facturacion_2025.map(v => v ? v/1e6 : null), borderColor: COLORS.dark, tension: 0.3, borderWidth: 2.5 },
+        { label: '2026', data: d.facturacion_2026.map(v => v ? v/1e6 : null), borderColor: COLORS.blue, tension: 0.3, borderWidth: 3, pointRadius: 5 }
+      ]
+    },
+    options: chartOpts({ y: { fmt: v => '$' + v + 'M' } })
+  });
+
+  // Real vs Objetivo
+  if (charts.realObj) charts.realObj.destroy();
+  const labelsRO = MESES_CORTO.slice(0, d['2026_real'].filter(v => v !== null).length);
+  charts.realObj = new Chart(document.getElementById('chart-real-obj'), {
+    type: 'bar',
+    data: {
+      labels: labelsRO,
+      datasets: [
+        { label: '2025', data: d['2025'].slice(0, labelsRO.length), backgroundColor: COLORS.grey },
+        { label: 'Objetivo +70%', data: d['2026_objetivo'].slice(0, labelsRO.length), backgroundColor: COLORS.yellow },
+        { label: 'Real 2026', data: d['2026_real'].slice(0, labelsRO.length), backgroundColor: COLORS.blue }
+      ]
+    },
+    options: chartOpts({ y: { fmt: v => (v/1000).toFixed(0) + 'K' } })
+  });
+}
+
+// ====== ALERTAS ======
+async function loadAlertas() {
+  const r = await fetch('/api/alertas');
+  const d = await r.json();
+  const container = document.getElementById('alertas-container');
+  document.getElementById('alertas-count').textContent = `${d.alertas.length} alerta${d.alertas.length !== 1 ? 's' : ''}`;
+  if (!d.alertas.length) {
+    container.innerHTML = '<p class="text-sm text-slate-400">✅ Sin alertas críticas.</p>';
+    return;
+  }
+  container.innerHTML = d.alertas.map(a => `
+    <div class="alert-${a.severidad} p-3 rounded">
+      <p class="font-semibold text-sm">${a.titulo}</p>
+      <p class="text-xs mt-1">${a.mensaje}</p>
+    </div>
+  `).join('');
+}
+
+// ====== SERVICIOS ======
+async function loadServicios() {
+  const mes = document.getElementById('servicio-mes-filter').value;
+  const r = await fetch('/api/servicios?mes=' + mes);
+  const d = await r.json();
+  if (d.error) return;
+
+  // Setup filtro de meses
+  const select = document.getElementById('servicio-mes-filter');
+  if (select.options.length === 1) {
+    d.evolutivo.meses.forEach(m => {
+      const idx = MESES_CORTO.indexOf(m);
+      const mLargo = MESES_LARGO[idx];
+      select.innerHTML += `<option value="${mLargo}">${mLargo}</option>`;
+    });
+  }
+
+  // Update ingreso fixy KPI
+  document.getElementById('kpi-ingreso').textContent = fmtMoneyShort(d.total_ingreso_fixy);
+
+  // Evolutivo apilado
+  if (charts.servEvol) charts.servEvol.destroy();
+  const cats = Object.keys(d.evolutivo.series);
+  charts.servEvol = new Chart(document.getElementById('chart-servicios-evol'), {
+    type: 'bar',
+    data: {
+      labels: d.evolutivo.meses,
+      datasets: cats.map((cat, i) => ({
+        label: cat,
+        data: d.evolutivo.series[cat].map(v => v / 1e6),
+        backgroundColor: COLORS.palette[i % COLORS.palette.length],
+        stack: 's1'
+      }))
+    },
+    options: chartOpts({ y: { fmt: v => '$' + v.toFixed(0) + 'M', stacked: true }, x: { stacked: true } })
+  });
+
+  // Pie servicios
+  if (charts.servPie) charts.servPie.destroy();
+  const top4 = d.categorias.slice(0, 4);
+  const otros = d.categorias.slice(4).reduce((s, x) => s + x.ingreso_fixy, 0);
+  const pieData = top4.map(x => x.ingreso_fixy);
+  const pieLabels = top4.map(x => x.cat_servicio);
+  if (otros > 0) { pieData.push(otros); pieLabels.push('Otros'); }
+  charts.servPie = new Chart(document.getElementById('chart-servicios-pie'), {
+    type: 'doughnut',
+    data: {
+      labels: pieLabels,
+      datasets: [{ data: pieData, backgroundColor: COLORS.palette }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => `${ctx.label}: ${fmtMoneyShort(ctx.parsed)}` } }
+      }
+    }
+  });
+
+  // Tabla
+  document.getElementById('servicios-tabla').innerHTML = d.categorias.map(c => `
+    <tr class="border-b hover:bg-slate-50">
+      <td class="p-2 font-semibold">${c.cat_servicio}</td>
+      <td class="text-right p-2">${fmtNum(c.q_envios)}</td>
+      <td class="text-right p-2 text-slate-600">${fmtMoneyShort(c.importe)}</td>
+      <td class="text-right p-2 font-bold text-[#0E5A78]">${fmtMoneyShort(c.ingreso_fixy)}</td>
+    </tr>
+  `).join('');
+}
+
+// ====== CLIENTES ======
+async function loadClientes() {
+  const n = document.getElementById('top-n').value;
+  const metric = document.getElementById('top-metric').value;
+  const r = await fetch(`/api/top-clientes?n=${n}&metric=${metric}`);
+  const d = await r.json();
+  if (d.error) return;
+
+  // Line chart de top clientes
+  if (charts.topCli) charts.topCli.destroy();
+  charts.topCli = new Chart(document.getElementById('chart-top-clientes'), {
+    type: 'line',
+    data: {
+      labels: d.meses,
+      datasets: d.analisis.map((a, i) => ({
+        label: a.cliente,
+        data: a.evolucion,
+        borderColor: COLORS.palette[i % COLORS.palette.length],
+        backgroundColor: COLORS.palette[i % COLORS.palette.length],
+        tension: 0.3, borderWidth: 2
+      }))
+    },
+    options: chartOpts({ y: { fmt: v => fmtNum(v) } })
+  });
+
+  // Tabla
+  document.getElementById('clientes-tabla').innerHTML = d.top.map((c, i) => {
+    const a = d.analisis[i];
+    return `
+      <tr class="border-b hover:bg-slate-50">
+        <td class="p-2 font-semibold">${c.cliente}</td>
+        <td class="text-right p-2">${fmtNum(c.q_envios)}</td>
+        <td class="text-right p-2 font-bold text-[#0E5A78]">${fmtMoneyShort(c.ingreso_fixy)}</td>
+        <td class="text-right p-2 ${colorize(a.crecimiento_pct)}">${(a.crecimiento_pct >= 0 ? '+' : '')}${a.crecimiento_pct}%</td>
+        <td class="text-right p-2 ${colorize(a.tendencia_ultimo_mes_pct)}">${(a.tendencia_ultimo_mes_pct >= 0 ? '+' : '')}${a.tendencia_ultimo_mes_pct}%</td>
+        <td class="p-2 text-xs">${a.estado}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ====== PAGOS ======
+async function loadPagos() {
+  const r = await fetch('/api/tipo-pago');
+  const d = await r.json();
+  if (d.error) return;
+
+  const contra = d.totales.find(x => x.tipo_pago === 'Contraentrega') || {q: 0, cr: 0, ingreso: 0};
+  const ant = d.totales.find(x => x.tipo_pago === 'Pago Anticipado') || {q: 0, cr: 0, ingreso: 0};
+  const total = contra.q + ant.q;
+  document.getElementById('pago-contra').textContent = fmtNum(contra.q);
+  document.getElementById('pago-contra-pct').textContent = (contra.q / total * 100).toFixed(1) + '% del total';
+  document.getElementById('pago-ant').textContent = fmtNum(ant.q);
+  document.getElementById('pago-ant-pct').textContent = (ant.q / total * 100).toFixed(1) + '% del total';
+  document.getElementById('pago-cr-total').textContent = fmtMoneyShort(contra.cr);
+  document.getElementById('pago-cr-ingreso').textContent = fmtMoneyShort(contra.cr * 0.01);
+
+  if (charts.pagoPct) charts.pagoPct.destroy();
+  charts.pagoPct = new Chart(document.getElementById('chart-pago-pct'), {
+    type: 'bar',
+    data: {
+      labels: d.meses,
+      datasets: [
+        { label: 'Contraentrega %', data: d.pct_contraentrega, backgroundColor: COLORS.blue, stack: 's' },
+        { label: 'Pago Anticipado %', data: d.pct_anticipado, backgroundColor: COLORS.yellow, stack: 's' }
+      ]
+    },
+    options: chartOpts({ y: { stacked: true, fmt: v => v + '%' }, x: { stacked: true } })
+  });
+
+  if (charts.pagoAbs) charts.pagoAbs.destroy();
+  charts.pagoAbs = new Chart(document.getElementById('chart-pago-abs'), {
+    type: 'bar',
+    data: {
+      labels: d.meses,
+      datasets: [
+        { label: 'Contraentrega', data: d.q_contraentrega, backgroundColor: COLORS.blue },
+        { label: 'Pago Anticipado', data: d.q_anticipado, backgroundColor: COLORS.yellow }
+      ]
+    },
+    options: chartOpts({ y: { fmt: v => fmtNum(v) } })
+  });
+}
+
+// ====== FULFILLMENT ======
+async function loadFulfillment() {
+  const r = await fetch('/api/fulfillment');
+  const d = await r.json();
+  if (d.error) {
+    document.getElementById('tab-fulfillment').innerHTML = '<div class="card p-8 text-center text-slate-500">Sin datos de Fulfillment cargados.</div>';
+    return;
+  }
+
+  document.getElementById('ful-pedidos').textContent = fmtNum(d.totales.pedidos_ytd);
+  document.getElementById('ful-unidades').textContent = fmtNum(d.totales.unidades_ytd);
+  document.getElementById('ful-fact').textContent = fmtMoneyShort(d.totales.facturacion_ytd);
+  document.getElementById('ful-clientes').textContent = d.totales.clientes_unicos;
+
+  if (charts.fulPed) charts.fulPed.destroy();
+  charts.fulPed = new Chart(document.getElementById('chart-ful-pedidos'), {
+    type: 'line',
+    data: {
+      labels: d.meses,
+      datasets: [
+        { label: 'Pedidos', data: d.pedidos, borderColor: COLORS.blue, backgroundColor: COLORS.blue, tension: 0.3, borderWidth: 3, pointRadius: 6 },
+        { label: 'Unidades', data: d.unidades, borderColor: COLORS.yellow, backgroundColor: COLORS.yellow, tension: 0.3, borderWidth: 3, pointRadius: 6 }
+      ]
+    },
+    options: chartOpts({ y: { fmt: v => fmtNum(v) } })
+  });
+
+  if (charts.fulFact) charts.fulFact.destroy();
+  charts.fulFact = new Chart(document.getElementById('chart-ful-fact'), {
+    type: 'bar',
+    data: {
+      labels: d.meses,
+      datasets: [{ label: 'Facturación', data: d.facturacion.map(v => v / 1e6), backgroundColor: COLORS.dark }]
+    },
+    options: chartOpts({ y: { fmt: v => '$' + v.toFixed(1) + 'M' } })
+  });
+
+  if (charts.fulTop) charts.fulTop.destroy();
+  const topEntries = Object.entries(d.top_clientes);
+  charts.fulTop = new Chart(document.getElementById('chart-ful-top'), {
+    type: 'bar',
+    data: {
+      labels: topEntries.map(e => e[0]),
+      datasets: [{ label: 'Pedidos', data: topEntries.map(e => e[1]), backgroundColor: COLORS.palette }]
+    },
+    options: { ...chartOpts({ y: { fmt: v => fmtNum(v) } }), indexAxis: 'y' }
+  });
+}
+
+// ====== SIMULADOR ======
+async function runSimulador() {
+  const body = {
+    growth_target: document.getElementById('sim-growth').value / 100,
+    ipc_anual: document.getElementById('sim-ipc').value / 100,
+    tasa_real: document.getElementById('sim-tasa').value / 100,
+  };
+  const r = await fetch('/api/simulador', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json();
+  if (d.error) return;
+
+  document.getElementById('sim-obj').textContent = fmtNum(d.objetivo_envios_anual);
+  document.getElementById('sim-proy').textContent = fmtNum(d.proyeccion_envios_anual);
+  const gapEl = document.getElementById('sim-gap');
+  gapEl.textContent = (d.gap_envios >= 0 ? '+' : '') + fmtNum(d.gap_envios);
+  gapEl.className = 'text-2xl font-bold ' + (d.gap_envios <= 0 ? 'text-green-600' : 'text-red-600');
+
+  const status = d.cumplimiento_pct >= 100 ? '✅ Se cumple el objetivo' : d.cumplimiento_pct >= 85 ? '🟡 Cerca del objetivo' : '🔴 No se llega al objetivo';
+  document.getElementById('sim-resultado').innerHTML = `
+    <p>${status} — Cumplimiento estimado: <b>${d.cumplimiento_pct.toFixed(1)}%</b></p>
+    <p>Con un crecimiento real esperado del <b>${d.tasa_aplicada_pct.toFixed(0)}%</b>, se proyectan <b>${fmtNum(d.proyeccion_envios_anual)}</b> envíos vs un objetivo de <b>${fmtNum(d.objetivo_envios_anual)}</b>.</p>
+    <p>Facturación nominal proyectada (incluye IPC ${d.ipc_anual_pct.toFixed(0)}%): <b>${fmtMoneyShort(d.facturacion_proyectada)}</b></p>
+    <p class="text-xs text-slate-500 mt-3">Recordá: variables a ajustar también incluyen tarifa por servicio, mix de productos y churn de clientes top.</p>
+  `;
+}
+
+// ====== CHART OPTIONS UTIL ======
+function chartOpts({ y = {}, x = {} } = {}) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { position: 'bottom', labels: { font: { size: 11 }, padding: 12 } },
+      tooltip: {
+        callbacks: {
+          label: ctx => `${ctx.dataset.label}: ${y.fmt ? y.fmt(ctx.parsed.y) : fmtNum(ctx.parsed.y)}`
+        }
+      }
+    },
+    scales: {
+      x: { stacked: !!x.stacked, grid: { display: false } },
+      y: {
+        stacked: !!y.stacked,
+        beginAtZero: true,
+        ticks: { callback: v => y.fmt ? y.fmt(v) : fmtNum(v) },
+        grid: { color: '#f0f0f0' }
+      }
+    }
+  };
+}
+
+// ====== INIT ======
+refreshAll();
+</script>
+</body>
+</html>
